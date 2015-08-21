@@ -2,13 +2,54 @@
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:rsb="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content">
+    android:layout_height="wrap_content"
+    android:fillViewport="true"
+    android:background="#fff">
 
     <LinearLayout
         android:layout_width="fill_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:padding="5dp">
+
+
+        <TextView
+            android:layout_width="fill_parent"
+            android:layout_height="wrap_content"
+            android:text="Range seek bar from xml with custom thumb handle" />
+
+        <Button
+            android:id="@+id/btn_reset"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Reset values"/>
+
+        <org.florescu.android.rangeseekbar.RangeSeekBar
+            android:id="@+id/rangebar"
+            android:layout_width="fill_parent"
+            android:layout_height="wrap_content"
+            rsb:absoluteMaxValue="150"
+            rsb:absoluteMinValue="20"
+            rsb:thumbDisabled="@drawable/switch_thumb"
+            rsb:thumbNormal="@drawable/switch_thumb"
+            rsb:thumbPressed="@drawable/switch_thumb_test"
+            rsb:showLabels="false"
+            rsb:alignLineToThumbs="true"
+            rsb:alwaysActive="true"
+            rsb:activeColor="#18f41d"
+            rsb:defaultColor="#49a6a9"
+            rsb:barHeight="5dp"
+            rsb:edgeType="thumb"
+            rsb:textAboveThumbsColor="#a9aca9"
+            rsb:thumbPressAreaFactor="2"
+            rsb:initMaxValue="120"
+            rsb:initMinValue="50"/>
+
+        <TextView
+            android:layout_width="fill_parent"
+            android:layout_height="wrap_content"
+            android:text="Range seek bar from xml with no text above" />
+
 
         <TextView
             android:layout_width="fill_parent"
@@ -28,7 +69,8 @@
 
         <org.florescu.android.rangeseekbar.RangeSeekBar
             android:layout_width="fill_parent"
-            android:layout_height="wrap_content" />
+            android:layout_height="wrap_content"
+            rsb:alignLineToThumbs="true"/>
 
         <TextView
             android:layout_width="fill_parent"
@@ -89,25 +131,6 @@
           rsb:absoluteMaxValue="150"
           rsb:absoluteMinValue="20"
           rsb:singleThumb="true" />
-
-        <TextView
-            android:layout_width="fill_parent"
-            android:layout_height="wrap_content"
-            android:text="Range seek bar from xml with custom thumb handle" />
-
-        <org.florescu.android.rangeseekbar.RangeSeekBar
-            android:layout_width="fill_parent"
-            android:layout_height="wrap_content"
-            rsb:absoluteMaxValue="150"
-            rsb:absoluteMinValue="20"
-            rsb:thumbDisabled="@mipmap/ic_launcher"
-            rsb:thumbNormal="@mipmap/ic_launcher"
-            rsb:thumbPressed="@mipmap/ic_launcher" />
-
-        <TextView
-            android:layout_width="fill_parent"
-            android:layout_height="wrap_content"
-            android:text="Range seek bar from xml with no text above" />
 
         <org.florescu.android.rangeseekbar.RangeSeekBar
             android:layout_width="fill_parent"

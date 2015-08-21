@@ -17,6 +17,8 @@ limitations under the License.
 
 package org.florescu.android.rangeseekbar;
 
+import android.animation.ValueAnimator;
+import android.animation.ValueAnimator.AnimatorUpdateListener;
 import android.content.Context;
 import android.content.res.TypedArray;
 import android.graphics.Bitmap;
@@ -24,8 +26,10 @@ import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.Paint.Align;
 import android.graphics.Paint.Style;
 import android.graphics.RectF;
+import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.os.Parcelable;
@@ -69,12 +73,15 @@ public class RangeSeekBar<T extends Number> extends ImageView {
     // with API < 8 "Froyo".
     public static final int ACTION_POINTER_INDEX_MASK = 0x0000ff00, ACTION_POINTER_INDEX_SHIFT = 8;
 
+    public static final int EDGE_TYPE_VALUE = 0;
+    public static final int EDGE_TYPE_THUMB = 1;
+
     public static final Integer DEFAULT_MINIMUM = 0;
     public static final Integer DEFAULT_MAXIMUM = 100;
     public static final int HEIGHT_IN_DP = 30;
     public static final int TEXT_LATERAL_PADDING_IN_DP = 3;
 
-    private static final int INITIAL_PADDING_IN_DP = 8;
+    private static final int INITIAL_PADDING_IN_DP = 20;
     private static final int DEFAULT_TEXT_SIZE_IN_DP = 14;
     private static final int DEFAULT_TEXT_DISTANCE_TO_BUTTON_IN_DP = 8;
     private static final int DEFAULT_TEXT_DISTANCE_TO_TOP_IN_DP = 8;
@@ -91,6 +98,7 @@ public class RangeSeekBar<T extends Number> extends ImageView {
 
     private float padding;
     private T absoluteMinValue, absoluteMaxValue;
+    private T initMinValue, initMaxValue;
     private NumberType numberType;
     private double absoluteMinValuePrim, absoluteMaxValuePrim;
     private double normalizedMinValue = 0d;
@@ -120,6 +128,12 @@ public class RangeSeekBar<T extends Number> extends ImageView {
     private int mActiveColor;
     private int mDefaultColor;
     private int mTextAboveThumbsColor;
+
+    private boolean alignLineToThumbs;
+    private int edgeType = EDGE_TYPE_VALUE;
+    private ValueFormatter formatter;
+    private float thumbPressAreaFactor;
+    private boolean isAttached;
 
     public RangeSeekBar(Context context) {
         super(context);
@@ -151,11 +165,28 @@ public class RangeSeekBar<T extends Number> extends ImageView {
         }
     }
 
+    @SuppressWarnings("unchecked")
+    private T extractInitValue(TypedArray a, int attribute, T defaultValue) {
+        TypedValue tv = a.peekValue(attribute);
+        if (tv == null) {
+            return defaultValue;
+        }
+
+        int type = tv.type;
+        if (type == TypedValue.TYPE_FLOAT) {
+            return (T) Float.valueOf(a.getFloat(attribute, 0f));
+        } else {
+            return (T) Integer.valueOf(a.getInteger(attribute, 1));
+        }
+    }
+
     private void init(Context context, AttributeSet attrs) {
         float barHeight;
         int thumbNormal = R.drawable.seek_thumb_normal;
         int thumbPressed = R.drawable.seek_thumb_pressed;
         int thumbDisabled = R.drawable.seek_thumb_disabled;
+
+        paint.setTextAlign(Align.CENTER);
 
         if (attrs == null) {
             setRangeToDefaultValues();
@@ -173,6 +204,10 @@ public class RangeSeekBar<T extends Number> extends ImageView {
                         extractNumericValueFromAttributes(a, R.styleable.RangeSeekBar_absoluteMinValue, DEFAULT_MINIMUM),
                         extractNumericValueFromAttributes(a, R.styleable.RangeSeekBar_absoluteMaxValue, DEFAULT_MAXIMUM)
                 );
+                setInitValues(
+                        extractInitValue(a, R.styleable.RangeSeekBar_initMinValue, absoluteMinValue),
+                        extractInitValue(a, R.styleable.RangeSeekBar_initMaxValue, absoluteMaxValue)
+                );
                 mShowTextAboveThumbs = a.getBoolean(R.styleable.RangeSeekBar_valuesAboveThumbs, true);
                 mSingleThumb = a.getBoolean(R.styleable.RangeSeekBar_singleThumb, false);
                 mShowLabels = a.getBoolean(R.styleable.RangeSeekBar_showLabels, true);
@@ -182,6 +217,9 @@ public class RangeSeekBar<T extends Number> extends ImageView {
                 mDefaultColor = a.getColor(R.styleable.RangeSeekBar_defaultColor, Color.GRAY);
                 mTextAboveThumbsColor = a.getColor(R.styleable.RangeSeekBar_textAboveThumbsColor, Color.WHITE);
                 mAlwaysActive = a.getBoolean(R.styleable.RangeSeekBar_alwaysActive, false);
+                alignLineToThumbs = a.getBoolean(R.styleable.RangeSeekBar_alignLineToThumbs, false);
+                edgeType = a.getInteger(R.styleable.RangeSeekBar_edgeType, EDGE_TYPE_VALUE);
+                thumbPressAreaFactor = Math.max(1, a.getFloat(R.styleable.RangeSeekBar_thumbPressAreaFactor, 1));
                 Drawable normalDrawable = a.getDrawable(R.styleable.RangeSeekBar_thumbNormal);
                 if (normalDrawable != null) {
                     thumbImage = BitmapUtil.drawableToBitmap(normalDrawable);
@@ -236,6 +274,14 @@ public class RangeSeekBar<T extends Number> extends ImageView {
         setValuePrimAndNumberType();
     }
 
+    public void setInitValues(T minValue, T maxValue) {
+        initMinValue = minValue;
+        initMaxValue = maxValue;
+
+        normalizedMinValue = valueToNormalized(initMinValue);
+        normalizedMaxValue = valueToNormalized(initMaxValue);
+    }
+
     public void setTextAboveThumbsColor(int textAboveThumbsColor) {
         this.mTextAboveThumbsColor = textAboveThumbsColor;
         invalidate();
@@ -243,6 +289,10 @@ public class RangeSeekBar<T extends Number> extends ImageView {
 
     public void setTextAboveThumbsColorResource(@ColorRes int resId) {
         setTextAboveThumbsColor(getResources().getColor(resId));
+    }
+
+    public void setFormatter(ValueFormatter formatter) {
+        this.formatter = formatter;
     }
 
     @SuppressWarnings("unchecked")
@@ -257,6 +307,10 @@ public class RangeSeekBar<T extends Number> extends ImageView {
         absoluteMinValuePrim = absoluteMinValue.doubleValue();
         absoluteMaxValuePrim = absoluteMaxValue.doubleValue();
         numberType = NumberType.fromNumber(absoluteMinValue);
+    }
+
+    public void setTypeface(Typeface tf) {
+        paint.setTypeface(tf);
     }
 
     @SuppressWarnings("unused")
@@ -304,6 +358,8 @@ public class RangeSeekBar<T extends Number> extends ImageView {
     public T getSelectedMinValue() {
         return normalizedToValue(normalizedMinValue);
     }
+
+
 
     /**
      * Sets the currently selected minimum value. The widget will be invalidated and redrawn.
@@ -432,7 +488,6 @@ public class RangeSeekBar<T extends Number> extends ImageView {
                 break;
             case MotionEvent.ACTION_POINTER_DOWN: {
                 final int index = event.getPointerCount() - 1;
-                // final int index = ev.getActionIndex();
                 mDownMotionX = event.getX(index);
                 mActivePointerId = event.getPointerId(index);
                 invalidate();
@@ -501,6 +556,48 @@ public class RangeSeekBar<T extends Number> extends ImageView {
         mIsDragging = false;
     }
 
+    public void resetToInitValues() {
+
+        double tartgetNormalizedMin = valueToNormalized(initMinValue);
+        double targetNormalizedMax = valueToNormalized(initMaxValue);
+
+        if (isAttached) {
+
+            float currentMinValue = (float) normalizedMinValue;
+            float targetMinValue = (float) tartgetNormalizedMin;
+            ValueAnimator minAnimator = ValueAnimator.ofFloat(currentMinValue, targetMinValue);
+            minAnimator.addUpdateListener(new AnimatorUpdateListener() {
+                @Override public void onAnimationUpdate(ValueAnimator animation) {
+                    float value = (float) animation.getAnimatedValue();
+                    normalizedMinValue = (double) value;
+                    invalidate();
+                }
+            });
+
+            float currentMaxValue = (float) normalizedMaxValue;
+            float targetMaxValue = (float) targetNormalizedMax;
+            ValueAnimator maxAnimator = ValueAnimator.ofFloat(currentMaxValue, targetMaxValue);
+            maxAnimator.addUpdateListener(new AnimatorUpdateListener() {
+                @Override public void onAnimationUpdate(ValueAnimator animation) {
+                    float value = (float) animation.getAnimatedValue();
+                    normalizedMaxValue = (double) value;
+                    invalidate();
+                }
+            });
+
+            minAnimator.setDuration(500);
+            maxAnimator.setDuration(500);
+            minAnimator.start();
+            maxAnimator.start();
+
+        } else {
+            normalizedMinValue = tartgetNormalizedMin;
+            normalizedMaxValue = targetNormalizedMax;
+        }
+
+
+    }
+
     /**
      * Ensures correct size of the widget.
      */
@@ -537,14 +634,23 @@ public class RangeSeekBar<T extends Number> extends ImageView {
             String maxLabel = getContext().getString(R.string.demo_max_label);
             minMaxLabelSize = Math.max(paint.measureText(minLabel), paint.measureText(maxLabel));
             float minMaxHeight = mTextOffset + mThumbHalfHeight + mTextSize / 3;
-            canvas.drawText(minLabel, 0, minMaxHeight, paint);
-            canvas.drawText(maxLabel, getWidth() - minMaxLabelSize, minMaxHeight, paint);
+            canvas.drawText(minLabel, minMaxLabelSize / 2f, minMaxHeight, paint);
+            canvas.drawText(maxLabel, getWidth() - minMaxLabelSize / 2f, minMaxHeight, paint);
         }
         padding = mInternalPad + minMaxLabelSize + mThumbHalfWidth;
 
         // draw seek bar background line
-        mRect.left = padding;
-        mRect.right = getWidth() - padding;
+
+        float left;
+
+        if (alignLineToThumbs) {
+            left = padding - thumbImage.getWidth() / 2f;
+        } else {
+            left = padding;
+        }
+
+        mRect.left = left;
+        mRect.right = getWidth() - left;
         canvas.drawRect(mRect, paint);
 
         boolean selectedValuesAreDefault = (getSelectedMinValue().equals(getAbsoluteMinValue()) &&
@@ -572,32 +678,85 @@ public class RangeSeekBar<T extends Number> extends ImageView {
                 selectedValuesAreDefault);
 
         // draw the text if sliders have moved from default edges
-        if (mShowTextAboveThumbs && !selectedValuesAreDefault) {
+        if (mShowTextAboveThumbs) {
             paint.setTextSize(mTextSize);
             paint.setColor(mTextAboveThumbsColor);
-            // give text a bit more space here so it doesn't get cut off
-            int offset = PixelUtil.dpToPx(getContext(), TEXT_LATERAL_PADDING_IN_DP);
 
-            String minText = String.valueOf(getSelectedMinValue());
-            String maxText = String.valueOf(getSelectedMaxValue());
-            float minTextWidth = paint.measureText(minText) + offset;
-            float maxTextWidth = paint.measureText(maxText) + offset;
+            String minText;
+            String maxText;
 
-            if (!mSingleThumb) {
-                canvas.drawText(minText,
-                        normalizedToScreen(normalizedMinValue) - minTextWidth * 0.5f,
-                        mDistanceToTop + mTextSize,
-                        paint);
-
+            if (formatter != null) {
+                minText = formatter.formatValue(getSelectedMinValue(), absoluteMinValue, absoluteMaxValue);
+                maxText = formatter.formatValue(getSelectedMaxValue(), absoluteMinValue, absoluteMaxValue);
+            } else {
+                minText = String.valueOf(getSelectedMinValue());
+                maxText = String.valueOf(getSelectedMaxValue());
             }
 
-            canvas.drawText(maxText,
-                    normalizedToScreen(normalizedMaxValue) - maxTextWidth * 0.5f,
+            drawThumbText(canvas, minText, maxText);
+        }
+
+    }
+
+    private void drawThumbText(Canvas canvas, String minText, String maxText) {
+
+        float minTextWidth = paint.measureText(minText);
+        float maxTextWidth = paint.measureText(maxText);
+
+        float minX = normalizedToScreen(normalizedMinValue);
+        float maxX = normalizedToScreen(normalizedMaxValue);
+
+        float minDistance = (minTextWidth / 2f + maxTextWidth / 2f) * 1.03f;
+
+        boolean overlapLeft = false;
+        boolean overlapRight = false;
+        float overlapDistanceLeft;
+        float overlapDistanceRight;
+
+        float leftPos = minX - minTextWidth / 2f;
+        float rightPos = maxX + maxTextWidth / 2f;
+
+        if (leftPos < 0) {
+            overlapLeft = true;
+            overlapDistanceLeft = Math.abs(leftPos);
+            minX = minX + overlapDistanceLeft;
+        }
+
+        if (rightPos > getWidth()) {
+            overlapRight = true;
+            overlapDistanceRight = rightPos - getWidth();
+            maxX = maxX - overlapDistanceRight;
+        }
+
+        float currentDistance = Math.abs(maxX - minX);
+        if (currentDistance < minDistance) {
+
+            float result = minDistance - currentDistance;
+
+            if (overlapLeft) {
+                maxX = maxX + result;
+            } else if (overlapRight) {
+                minX = minX - result;
+            } else {
+                minX = minX - result / 2f;
+                maxX = maxX + result / 2f;
+            }
+        }
+
+        if (!mSingleThumb) {
+            canvas.drawText(minText,
+                    minX,
                     mDistanceToTop + mTextSize,
                     paint);
         }
 
+        canvas.drawText(maxText,
+                maxX,
+                mDistanceToTop + mTextSize,
+                paint);
+
     }
+
 
     /**
      * Overridden to save instance state when device orientation changes. This method is called automatically if you assign an id to the RangeSeekBar widget using the {@link #setId(int)} method. Other members of this class than the normalized min and max values don't need to be saved.
@@ -622,6 +781,16 @@ public class RangeSeekBar<T extends Number> extends ImageView {
         normalizedMaxValue = bundle.getDouble("MAX");
     }
 
+    @Override protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        isAttached = true;
+    }
+
+    @Override protected void onDetachedFromWindow() {
+        super.onDetachedFromWindow();
+        isAttached = false;
+    }
+
     /**
      * Draws the "normal" resp. "pressed" thumb image on specified x-coordinate.
      *
@@ -631,7 +800,7 @@ public class RangeSeekBar<T extends Number> extends ImageView {
      */
     private void drawThumb(float screenCoord, boolean pressed, Canvas canvas, boolean areSelectedValuesDefault) {
         Bitmap buttonToDraw;
-        if (areSelectedValuesDefault) {
+        if (areSelectedValuesDefault && !mAlwaysActive) {
             buttonToDraw = thumbDisabledImage;
         } else {
             buttonToDraw = pressed ? thumbPressedImage : thumbImage;
@@ -671,7 +840,7 @@ public class RangeSeekBar<T extends Number> extends ImageView {
      * @return true if x-coordinate is in thumb range, false otherwise.
      */
     private boolean isInThumbRange(float touchX, double normalizedThumbValue) {
-        return Math.abs(touchX - normalizedToScreen(normalizedThumbValue)) <= mThumbHalfWidth;
+        return Math.abs(touchX - normalizedToScreen(normalizedThumbValue)) <= mThumbHalfWidth * thumbPressAreaFactor;
     }
 
     /**
@@ -680,7 +849,14 @@ public class RangeSeekBar<T extends Number> extends ImageView {
      * @param value The new normalized min value to set.
      */
     private void setNormalizedMinValue(double value) {
-        normalizedMinValue = Math.max(0d, Math.min(1d, Math.min(value, normalizedMaxValue)));
+
+        if (edgeType == EDGE_TYPE_VALUE) {
+            normalizedMinValue = Math.max(0d, Math.min(1d, Math.min(value, normalizedMaxValue)));
+        } else if (edgeType == EDGE_TYPE_THUMB) {
+            double normalizedThumb = getNormalizedThumbWidth();
+            normalizedMinValue = Math.max(0d, Math.min(1d, Math.min(value, normalizedMaxValue - normalizedThumb)));
+        }
+
         invalidate();
     }
 
@@ -690,7 +866,12 @@ public class RangeSeekBar<T extends Number> extends ImageView {
      * @param value The new normalized max value to set.
      */
     private void setNormalizedMaxValue(double value) {
-        normalizedMaxValue = Math.max(0d, Math.min(1d, Math.max(value, normalizedMinValue)));
+        if (edgeType == EDGE_TYPE_VALUE) {
+            normalizedMaxValue = Math.max(0d, Math.min(1d, Math.max(value, normalizedMinValue)));
+        } else if (edgeType == EDGE_TYPE_THUMB) {
+            double normalizedThumb = getNormalizedThumbWidth();
+            normalizedMaxValue = Math.max(0d, Math.min(1d, Math.max(value, normalizedMinValue + normalizedThumb)));
+        }
         invalidate();
     }
 
@@ -743,6 +924,18 @@ public class RangeSeekBar<T extends Number> extends ImageView {
             double result = (screenCoord - padding) / (width - 2 * padding);
             return Math.min(1d, Math.max(0d, result));
         }
+    }
+
+    private double getNormalizedThumbWidth() {
+
+        int width = getWidth();
+
+        if (width == 0) {
+            return 0d;
+        }
+
+        float thumbWidth = thumbImage.getWidth();
+        return thumbWidth / (width - 2 * padding);
     }
 
     /**
@@ -815,6 +1008,36 @@ public class RangeSeekBar<T extends Number> extends ImageView {
     public interface OnRangeSeekBarChangeListener<T> {
 
         void onRangeSeekBarValuesChanged(RangeSeekBar<?> bar, T minValue, T maxValue);
+    }
+
+    public interface ValueFormatter<T> {
+        String formatValue(T value, T minValue, T maxValue);
+    }
+
+    public static class IntFormatter implements ValueFormatter<Integer> {
+
+        private String format;
+
+        public IntFormatter(String prefix, String suffix) {
+
+            StringBuilder sb = new StringBuilder();
+
+            if (prefix != null) {
+                sb.append(prefix);
+            }
+
+            sb.append("%d");
+
+            if (suffix != null) {
+                sb.append(suffix);
+            }
+
+            format = sb.toString();
+        }
+
+        @Override public String formatValue(Integer value, Integer minValue, Integer maxValue) {
+            return String.format(format, value);
+        }
     }
 
 }

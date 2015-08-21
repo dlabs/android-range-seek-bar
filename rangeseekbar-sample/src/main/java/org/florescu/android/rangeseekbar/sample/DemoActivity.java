@@ -18,10 +18,15 @@ limitations under the License.
 package org.florescu.android.rangeseekbar.sample;
 
 import android.app.Activity;
+import android.graphics.Typeface;
 import android.os.Bundle;
+import android.view.View;
+import android.view.View.OnClickListener;
+import android.widget.Button;
 import android.widget.LinearLayout;
 
 import org.florescu.android.rangeseekbar.RangeSeekBar;
+import org.florescu.android.rangeseekbar.RangeSeekBar.IntFormatter;
 
 public class DemoActivity extends Activity {
 
@@ -40,11 +45,37 @@ public class DemoActivity extends Activity {
         rangeSeekBar.setSelectedMinValue(20);
         rangeSeekBar.setSelectedMaxValue(88);
 
-        // Add to layout
+//         Add to layout
         LinearLayout layout = (LinearLayout) findViewById(R.id.seekbar_placeholder);
         layout.addView(rangeSeekBar);
 
-        RangeSeekBar rangeSeekBarTextColorWithCode = (RangeSeekBar) findViewById(R.id.rangeSeekBarTextColorWithCode);
-        rangeSeekBarTextColorWithCode.setTextAboveThumbsColorResource(android.R.color.holo_blue_bright);
+        Button btnReset = (Button) findViewById(R.id.btn_reset);
+
+        final RangeSeekBar<Integer> bar = (RangeSeekBar<Integer>) findViewById(R.id.rangebar);
+        btnReset.setOnClickListener(new OnClickListener() {
+            @Override public void onClick(View v) {
+                bar.resetToInitValues();
+            }
+        });
+        bar.setFormatter(new CustomFormatter("€", ".00"));
+
+        Typeface tf = Typeface.createFromAsset(getAssets(), "orangejuicettf.ttf");
+        bar.setTypeface(tf);
+
     }
+
+
+    static class CustomFormatter extends IntFormatter {
+
+        public CustomFormatter(String prefix, String suffix) {
+            super(prefix, suffix);
+        }
+
+        @Override public String formatValue(Integer value, Integer minValue, Integer maxValue) {
+
+            String string = super.formatValue(value, minValue, maxValue);
+            return string + "--";
+        }
+    }
+
 }

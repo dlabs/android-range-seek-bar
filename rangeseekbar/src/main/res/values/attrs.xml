@@ -37,8 +37,25 @@
 
         <!-- set drawables for thumb handles -->
         <attr name="thumbNormal"        format="reference"/>
+
         <attr name="thumbPressed"       format="reference"/>
+
         <attr name="thumbDisabled"      format="reference"/>
+
+        <attr name="alignLineToThumbs" format="boolean" />
+
+        <attr name="thumbPressAreaFactor" format="float" />
+
+        <attr name="initMinValue" format="integer|float" />
+
+        <attr name="initMaxValue" format="integer|float" />
+
+        <attr name="edgeType">
+            <enum name="value" value="0" />
+            <enum name="thumb" value="1" />
+        </attr>
+
+        
     </declare-styleable>
 
 </resources>
