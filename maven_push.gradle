@@ -1,0 +1,34 @@
+apply plugin: 'maven-publish'
+
+if (projectVersion.endsWith("SNAPSHOT")) {
+    println "Snapshot"
+    project.ext.endpoint = 'http://repo.dlabs.si:8081/artifactory/simple/libs-snapshot-local/'
+} else {
+    println "Release"
+    project.ext.endpoint = 'http://repo.dlabs.si:8081/artifactory/simple/libs-release-local/'
+}
+
+task sourceJar(type: Jar) {
+    from android.sourceSets.main.java.srcDirs
+    classifier "source"
+}
+
+publishing {
+    publications {
+        bar(MavenPublication) {
+            groupId projectGroup
+            artifactId artifactName
+            version projectVersion
+            artifact("$buildDir/outputs/aar/$project.name-release.aar")
+        }
+    }
+    repositories {
+        maven {
+            url endpoint
+            credentials {
+                username dArtifactoryUser
+                password dArtifactoryPass
+            }
+        }
+    }
+}
